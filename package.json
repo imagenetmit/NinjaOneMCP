@@ -12,6 +12,7 @@
     "start:http": "MCP_MODE=http node dist/index.js",
     "start:sse": "MCP_MODE=sse node dist/index.js",
     "test": "node dist/test.js",
+    "test:unit": "tsc -p tsconfig.test.json && node --test dist/ninja-api.test.js dist/index.test.js",
     "auth": "node dist/auth.js"
   },
   "dependencies": {

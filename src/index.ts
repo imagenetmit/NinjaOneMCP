@@ -10,6 +10,8 @@ import { NinjaOneAPI } from './ninja-api.js';
 import type { MaintenanceUnit, MaintenanceWindowSelection } from './ninja-api.js';
 import { createHttpServer, createSseServer } from './transport/http.js';
 import { config } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 config();
 
@@ -23,7 +25,7 @@ const MAINTENANCE_UNIT_SECONDS: Record<MaintenanceUnit, number> = {
 /**
  * Fixed tool definitions - removed complex filtering, kept all functionality
  */
-const TOOLS = [
+export const TOOLS = [
   // Device Management Tools
   {
     name: 'get_devices',
@@ -669,13 +671,14 @@ const TOOLS = [
   },
   {
     name: 'query_volumes',
-    description: 'Query disk volume information across devices',
+    description: 'Query disk volume information across devices. Pass include=bl for BitLocker status on volumes (not disks). Does not return recovery keys.',
     inputSchema: {
       type: 'object',
       properties: {
         df: { type: 'string', description: 'Device filter' },
         cursor: { type: 'string', description: 'Pagination cursor' },
-        pageSize: { type: 'number', description: 'Number of results per page (default: 50)' }
+        pageSize: { type: 'number', description: 'Number of results per page (default: 50)' },
+        include: { type: 'string', enum: ['bl'], description: 'Include BitLocker status.' }
       }
     }
   },
@@ -1196,7 +1199,7 @@ const TOOLS = [
 /**
  * NinjaONE MCP Server Class with multiple transports
  */
-class NinjaOneMCPServer {
+export class NinjaOneMCPServer {
   private server: Server;
   private api: NinjaOneAPI;
 
@@ -1510,7 +1513,7 @@ class NinjaOneMCPServer {
         case 'query_disks':
           return this.result(await this.api.queryDisks(args.df, args.cursor, args.pageSize || 50));
         case 'query_volumes':
-          return this.result(await this.api.queryVolumes(args.df, args.cursor, args.pageSize || 50));
+          return this.result(await this.api.queryVolumes(args.df, args.cursor, args.pageSize || 50, args.include));
         case 'query_network_interfaces':
           return this.result(await this.api.queryNetworkInterfaces(args.df, args.cursor, args.pageSize || 50));
         case 'query_raid_controllers':
@@ -1827,8 +1830,19 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Start the server
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+function isExecutedDirectly(): boolean {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  return fileURLToPath(import.meta.url) === path.resolve(entry);
+}
+
+// Start the server only when this module is the process entry point so unit
+// tests can import TOOLS and NinjaOneMCPServer without opening a transport.
+if (isExecutedDirectly()) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}

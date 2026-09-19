@@ -650,8 +650,11 @@ export class NinjaOneAPI {
     return this.makeRequest(`/v2/queries/disks${this.buildQuery({ df, cursor, pageSize })}`);
   }
 
-  async queryVolumes(df?: string, cursor?: string, pageSize?: number): Promise<any> {
-    return this.makeRequest(`/v2/queries/volumes${this.buildQuery({ df, cursor, pageSize })}`);
+  async queryVolumes(df?: string, cursor?: string, pageSize?: number, include?: string): Promise<any> {
+    if (include !== undefined && include !== 'bl') {
+      throw new Error('query_volumes include supports only "bl" (BitLocker status)');
+    }
+    return this.makeRequest(`/v2/queries/volumes${this.buildQuery({ df, cursor, pageSize, include })}`);
   }
 
   async queryNetworkInterfaces(df?: string, cursor?: string, pageSize?: number): Promise<any> {

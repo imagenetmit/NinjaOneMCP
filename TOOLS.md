@@ -116,7 +116,7 @@ Tools marked with **(confirm)** below use this pattern.
 |------|-------------|------------|
 | `query_processors` | Processor information | `df?`, `cursor?`, `pageSize?` |
 | `query_disks` | Disk drive information | `df?`, `cursor?`, `pageSize?` |
-| `query_volumes` | Disk volume information | `df?`, `cursor?`, `pageSize?` |
+| `query_volumes` | Disk volume information. `include=bl` adds `bitLockerStatus` (conversion, encryption method, protection, lock, initialized). BitLocker is a volume property, not a disk property. Recovery keys are never returned. | `df?`, `cursor?`, `pageSize?`, `include?` (`bl`) |
 | `query_network_interfaces` | Network interfaces | `df?`, `cursor?`, `pageSize?` |
 | `query_raid_controllers` | RAID controllers | `df?`, `cursor?`, `pageSize?` |
 | `query_raid_drives` | RAID drives | `df?`, `cursor?`, `pageSize?` |
