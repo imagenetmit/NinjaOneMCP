@@ -9,6 +9,8 @@ import { CallToolRequestSchema, ErrorCode, ListToolsRequestSchema, McpError } fr
 import { NinjaOneAPI } from './ninja-api.js';
 import type { MaintenanceUnit, MaintenanceWindowSelection } from './ninja-api.js';
 import { createHttpServer, createSseServer } from './transport/http.js';
+import { createManagedHttpServer } from './transport/managed-http.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { config } from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1261,9 +1263,9 @@ export class NinjaOneMCPServer {
   private server: Server;
   private api: NinjaOneAPI;
 
-  constructor() {
+  constructor(api?: NinjaOneAPI) {
     try {
-      this.api = new NinjaOneAPI();
+      this.api = api ?? new NinjaOneAPI();
       this.server = new Server(
         {
           name: 'ninjaone-mcp-server',
@@ -1284,7 +1286,7 @@ export class NinjaOneMCPServer {
 
   private setupToolHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
-      tools: TOOLS
+      tools: this.api.isManaged ? TOOLS.filter(tool => tool.name !== "set_region") : TOOLS
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -1977,6 +1979,9 @@ Always use official NinjaOne Device Filter syntax.`
     console.error('NinjaONE MCP server running on STDIO transport');
   }
 
+  async connect(transport: Transport) { await this.server.connect(transport); }
+  async close() { await this.server.close(); }
+
   async runHttp(port = 3000) {
     await createHttpServer(this.server, port);
     console.error(`NinjaONE MCP server running on HTTP transport at port ${port}`);
@@ -1993,6 +1998,14 @@ Always use official NinjaOne Device Filter syntax.`
  */
 async function main() {
   const mode = process.env.MCP_MODE || 'stdio';
+  if (mode === 'managed-http') {
+    const baseUrl = process.env.NINJA_BASE_URL || '';
+    if (!baseUrl) throw new Error('NINJA_BASE_URL is required for managed HTTP');
+    const http = createManagedHttpServer((accessToken) =>
+      new NinjaOneMCPServer(new NinjaOneAPI({ accessToken, baseUrl })));
+    http.listen(Number(process.env.HTTP_PORT || 3000), '127.0.0.1');
+    return;
+  }
   const server = new NinjaOneMCPServer();
 
   try {

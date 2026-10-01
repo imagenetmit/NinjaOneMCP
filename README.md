@@ -2,6 +2,20 @@
 
 A modern TypeScript MCP (Model Context Protocol) server for NinjaONE RMM platform with comprehensive API coverage and multiple transport options.
 
+## Managed per-user HTTP
+
+`MCP_MODE=managed-http NINJA_BASE_URL=https://app.ninjarmm.com HTTP_PORT=3000 npm start`
+starts a private Streamable HTTP `/mcp` listener on **127.0.0.1**. Only the trusted
+runner/gateway should reach it. Every request supplies `X-Ninja-Access-Token` and
+gets its own server/API client. The configured regional origin is immutable;
+`set_region`, token-file loading, client-credentials fallback, and redirects are
+disabled in this mode. Ops App owns user consent, refresh tokens, and refresh
+serialization; this process receives access tokens only.
+
+Existing stdio/service-account modes remain explicit options. Run `npm ci` and
+`npm run test:unit` for API and real HTTP concurrent-user isolation checks.
+Vendor-side attribution still requires controlled tests with actual users.
+
 ## Features
 
 ### 🚀 **Modern Architecture**

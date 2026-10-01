@@ -15,6 +15,7 @@ export type MaintenanceWindowSelection =
   | { permanent: false; value: number; unit: MaintenanceUnit; seconds: number };
 
 export class NinjaOneAPI {
+  private readonly managedToken: string | undefined;
   private baseUrl: string | null = null;
   private clientId: string;
   private clientSecret: string;
@@ -41,7 +42,23 @@ export class NinjaOneAPI {
     'https://oc.ninjarmm.com',
   ];
 
-  constructor() {
+  constructor(managed?: { accessToken: string; baseUrl: string }) {
+    if (managed) {
+      const base = new URL(managed.baseUrl);
+      if (base.protocol !== 'https:' || base.username || base.password || base.port ||
+          base.pathname !== '/' || base.search || base.hash ||
+          !Object.values(NinjaOneAPI.REGION_MAP).includes(base.origin) ||
+          !managed.accessToken || /[\s\x00-\x1f]/.test(managed.accessToken)) {
+        throw new Error('Invalid managed NinjaOne credentials');
+      }
+      this.managedToken = managed.accessToken;
+      this.baseUrl = base.origin;
+      this.baseUrlExplicit = true;
+      this.clientId = '';
+      this.clientSecret = '';
+      this.isConfigured = true;
+      return;
+    }
     const envBase = process.env.NINJA_BASE_URL;
     const envRegion = (process.env.NINJA_REGION || '').toLowerCase();
 
@@ -64,6 +81,8 @@ export class NinjaOneAPI {
       console.error('NinjaONE API initialized successfully');
     }
   }
+
+  public get isManaged(): boolean { return this.managedToken !== undefined; }
 
   private async getAccessToken(): Promise<string> {
     if (!this.isConfigured) {
@@ -139,6 +158,8 @@ export class NinjaOneAPI {
   }
 
   private async getBearerToken(): Promise<string> {
+    // Managed callers always use their own token, including on upstream 401.
+    if (this.managedToken !== undefined) return this.managedToken;
     // Prefer user-context token (authorization_code) when the user has run the auth CLI.
     // Falls back to client_credentials for unauthenticated reads.
     if (!this.userAuthChecked) {
@@ -185,9 +206,12 @@ export class NinjaOneAPI {
       options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${base}${endpoint}`, options);
+    const response = await fetch(`${base}${endpoint}`, this.isManaged ? { ...options, redirect: 'error', signal: AbortSignal.timeout(55000) } : options);
 
     if (!response.ok) {
+      if (this.managedToken !== undefined) {
+        throw new Error(response.status === 401 ? 'Reconnect NinjaOne' : `NinjaOne request failed (${response.status})`);
+      }
       const errorText = await response.text();
       throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
@@ -204,6 +228,7 @@ export class NinjaOneAPI {
     try {
       return JSON.parse(text);
     } catch (e) {
+      if (this.isManaged) throw new Error('NinjaOne response could not be decoded; upstream outcome unknown');
       return { success: true };
     }
   }
@@ -221,6 +246,7 @@ export class NinjaOneAPI {
   }
 
   public setBaseUrl(url: string): void {
+    if (this.managedToken !== undefined) throw new Error('Managed NinjaOne region cannot be changed');
     this.baseUrl = this.normalizeBaseUrl(url);
     this.baseUrlExplicit = true;
     this.accessToken = null;
@@ -866,6 +892,7 @@ export class NinjaOneAPI {
       `--${boundary}--\r\n`;
 
     const response = await fetch(`${base}/v2/ticketing/ticket/${ticketId}/comment`, {
+      ...(this.isManaged ? { redirect: 'error' as const, signal: AbortSignal.timeout(55000) } : {}),
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -876,13 +903,19 @@ export class NinjaOneAPI {
     });
 
     if (!response.ok) {
+      if (this.managedToken !== undefined) {
+        throw new Error(response.status === 401 ? 'Reconnect NinjaOne' : `NinjaOne request failed (${response.status})`);
+      }
       const errorText = await response.text();
       throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
     }
     if (response.status === 204) return { success: true };
     const text = await response.text();
     if (!text) return { success: true };
-    try { return JSON.parse(text); } catch { return { success: true }; }
+    try { return JSON.parse(text); } catch {
+      if (this.isManaged) throw new Error('NinjaOne response could not be decoded; upstream outcome unknown');
+      return { success: true };
+    }
   }
 
   // Phase 3 — Webhooks & event-driven
